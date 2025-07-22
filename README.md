@@ -68,7 +68,7 @@ Une application web complète pour créer, gérer et passer des examens en ligne
    uvicorn app.main:app --reload
    ```
 
-Le serveur sera accessible à l'adresse : http://localhost:8000
+Le serveur sera accessible à l'adresse : http://localhost:8005
 
 ### Configuration du frontend
 
