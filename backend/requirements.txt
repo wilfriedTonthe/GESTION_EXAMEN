@@ -1,0 +1,16 @@
+fastapi==0.104.1
+uvicorn[standard]
+sqlalchemy
+python-multipart
+passlib[bcrypt]
+python-jose[cryptography]
+fpdf
+face_recognition
+opencv-python
+pydantic==2.4.2
+python-dateutil==2.8.2
+reportlab==4.0.9
+pytest==7.4.3
+pytest-cov==4.1.0
+numpy
+deepface
