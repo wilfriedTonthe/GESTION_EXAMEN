@@ -4,7 +4,7 @@ Exporte les classes et fonctions principales pour une utilisation simplifiée.
 """
 
 from .camera_monitor import CameraMonitor
-from .remote_control import RemoteControlDetector
-from .screen_protector import ScreenProtector
 
-__all__ = ['CameraMonitor', 'RemoteControlDetector', 'ScreenProtector']
+from .exam_security import ExamSecurityService
+
+__all__ = ['CameraMonitor','ExamSecurityService']

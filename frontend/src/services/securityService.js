@@ -7,6 +7,7 @@ class SecurityService {
   // Démarrer la surveillance de sécurité pour un examen
   static async startExamSecurity(examId) {
     try {
+      console.log(`Appel à startExamSecurity avec examId: ${examId}`);
       const response = await axios.post(
         `${API_URL}/security/exam/start`,
         { session_id: examId.toString() },
@@ -17,6 +18,7 @@ class SecurityService {
           }
         }
       );
+      console.log('Réponse de startExamSecurity:', response.data);
       return response.data;
     } catch (error) {
       console.error('Erreur lors du démarrage de la sécurité:', error);

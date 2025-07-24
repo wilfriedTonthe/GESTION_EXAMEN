@@ -209,8 +209,13 @@ function ExamPage() {
       console.log('Début du chargement de l\'examen avec mot de passe:', examPassword);
       try {
         setLoading(true);
-        console.log('Appel à examService.getExamByPassword...');
-        const examData = await examService.getExamByPassword(examPassword);
+        console.log('Appel à examService.getExamByPasswordAndStudent...');
+        // Récupérer le nom de l'étudiant depuis le localStorage
+        const storedStudentName = localStorage.getItem('studentName');
+        console.log('Nom de l\'étudiant récupéré du localStorage:', storedStudentName);
+        
+        // Utiliser getExamByPasswordAndStudent au lieu de getExamByPassword
+        const examData = await examService.getExamByPasswordAndStudent(examPassword, storedStudentName);
         console.log('Données de l\'examen reçues:', examData);
         
         if (isMounted.current) {

@@ -82,6 +82,10 @@ const ExamUnifiedAccessPage = () => {
         isClosable: true,
       });
       
+      // Stocker le nom de l'étudiant dans le localStorage pour la récupération ultérieure
+      localStorage.setItem('studentName', studentName.trim());
+      console.log('Nom de l\'étudiant stocké dans localStorage:', studentName.trim());
+      
       // Le token a déjà été stocké dans handleAccessSubmit
       // Rediriger vers la page d'examen avec l'ID et le mot de passe
       navigate(`/exam/${examId}?password=${password}`);
