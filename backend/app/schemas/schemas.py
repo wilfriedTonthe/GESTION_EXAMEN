@@ -9,7 +9,7 @@ class QuestionType(str, Enum):
 
 # Schemas pour les questions
 class QuestionOptionBase(BaseModel):
-    text: str
+    text: str = Field(..., alias='option_text')
     is_correct: bool = False
 
 class QuestionOptionCreate(QuestionOptionBase):
@@ -20,9 +20,10 @@ class QuestionOption(QuestionOptionBase):
 
     class Config:
         from_attributes = True
+        populate_by_name = True
 
 class QuestionBase(BaseModel):
-    text: str
+    text: str = Field(..., alias='question_text')
     question_type: QuestionType
     points: int = 1
     options: List[QuestionOptionCreate] = []
@@ -37,6 +38,7 @@ class Question(QuestionBase):
 
     class Config:
         from_attributes = True
+        populate_by_name = True
 
 # Schemas pour les examens
 class ExamBase(BaseModel):

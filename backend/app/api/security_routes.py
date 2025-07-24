@@ -8,9 +8,9 @@ from app.core.security import get_current_user, get_password_hash
 from app.db.database import get_db
 from app.models import ExamSession, User
 from app.security.exam_security import exam_security
-from app.schemas.schemas import UserCreate, UserResponse, Token
+from app.schemas.auth import UserCreate, UserResponse, Token
 
-router = APIRouter(prefix="/security", tags=["security"])
+router = APIRouter(tags=["security"])
 
 @router.get("/status/{exam_id}")
 async def get_security_status(
@@ -69,6 +69,50 @@ async def emergency_stop(
     
     return {"status": "success", "message": "Surveillance de sécurité arrêtée"}
 
+@router.get("/verify-student/{exam_id}/{student_name}")
+async def verify_student_for_exam(
+    exam_id: int,
+    student_name: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Vérifie si un étudiant est autorisé à passer un examen en vérifiant
+    si son nom existe dans le fichier de signatures faciales de l'examen.
+    """
+    from app.security.face_recognition_service import face_recognition_service
+    
+    print(f"DEBUG - Vérification de l'étudiant: '{student_name}' pour l'examen {exam_id}")
+    
+    # Nettoyer le nom de l'étudiant pour correspondre au format utilisé dans les signatures
+    cleaned_student_name = student_name.replace(' ', '_').replace('/', '_').replace('\\', '_')
+    print(f"DEBUG - Nom nettoyé: '{cleaned_student_name}'")
+    
+    # Charger le fichier de signatures pour vérification manuelle
+    try:
+        import numpy as np
+        import os
+        signature_file = face_recognition_service.get_signature_file_path(exam_id)
+        if os.path.exists(signature_file):
+            signatures = np.load(signature_file, allow_pickle=True)
+            noms = signatures[:, -1]
+            print(f"DEBUG - Noms dans le fichier: {noms}")
+            print(f"DEBUG - Vérification manuelle: '{cleaned_student_name}' in noms = {cleaned_student_name in noms}")
+    except Exception as e:
+        print(f"DEBUG - Erreur lors de la vérification manuelle: {str(e)}")
+    
+    # Vérifier si l'étudiant est autorisé
+    is_authorized = face_recognition_service.verify_student(exam_id, cleaned_student_name)
+    
+    if is_authorized:
+        return {
+            "authorized": True,
+            "message": f"L'étudiant {student_name} est autorisé à passer cet examen."
+        }
+    else:
+        return {
+            "authorized": False,
+            "message": f"L'étudiant {student_name} n'est pas autorisé à passer cet examen. Vérifiez que votre nom correspond exactement à celui utilisé lors de l'inscription."
+        }
 
 
 router_auth = APIRouter(prefix="/auth", tags=["auth"])

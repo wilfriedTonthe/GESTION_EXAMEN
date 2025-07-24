@@ -130,11 +130,16 @@ ExamLayout.propTypes = {
 
 function ExamPage() {
   // React Router and Chakra UI Hooks
-  const { examPassword } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
   const { isOpen, onOpen, onClose } = useDisclosure();
+  
+  // Récupération du mot de passe depuis les paramètres de requête
+  const searchParams = new URLSearchParams(location.search);
+  const examPassword = searchParams.get('password');
+  
+  console.log('Mot de passe récupéré depuis les query params:', examPassword);
 
   // Component State
   const [exam, setExam] = useState(null);
@@ -201,28 +206,40 @@ function ExamPage() {
 
   useEffect(() => {
     const fetchExam = async () => {
+      console.log('Début du chargement de l\'examen avec mot de passe:', examPassword);
       try {
         setLoading(true);
+        console.log('Appel à examService.getExamByPassword...');
         const examData = await examService.getExamByPassword(examPassword);
+        console.log('Données de l\'examen reçues:', examData);
+        
         if (isMounted.current) {
+          console.log('Mise à jour des états avec les données de l\'examen');
           setExam(examData);
           setQuestions(examData.questions || []);
           setTimeLeft(examData.duration * 60);
+          console.log('Nombre de questions chargées:', examData.questions?.length || 0);
         }
       } catch (err) {
+        console.error('Erreur lors du chargement de l\'examen:', err);
         if (isMounted.current) {
           setError('Impossible de charger l\'examen. Vérifiez le mot de passe et réessayez.');
+          console.log('Message d\'erreur défini:', 'Impossible de charger l\'examen. Vérifiez le mot de passe et réessayez.');
         }
-        console.error(err);
       } finally {
         if (isMounted.current) {
           setLoading(false);
+          console.log('Chargement terminé, loading state mis à false');
         }
       }
     };
 
     if (examPassword) {
+      console.log('Mot de passe présent, lancement du chargement de l\'examen');
       fetchExam();
+    } else {
+      console.warn('Aucun mot de passe d\'examen trouvé dans les paramètres de requête');
+      setError('Aucun mot de passe d\'examen fourni. Veuillez retourner à la page d\'accès.');
     }
   }, [examPassword]);
 

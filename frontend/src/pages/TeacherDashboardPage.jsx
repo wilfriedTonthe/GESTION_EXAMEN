@@ -45,6 +45,11 @@ import {
   FormLabel,
   Textarea,
   FormErrorMessage,
+  NumberInput,
+  NumberInputField,
+  NumberInputStepper,
+  NumberIncrementStepper,
+  NumberDecrementStepper,
   Divider,
 } from '@chakra-ui/react';
 import { 
@@ -59,68 +64,25 @@ import {
   DownloadIcon 
 } from '@chakra-ui/icons';
 import { FaClipboardList, FaUsers, FaFilePdf, FaChalkboardTeacher, FaSignature } from 'react-icons/fa';
+import { Formik, Form, Field } from 'formik';
+import * as Yup from 'yup';
 import AddQuestionsModal from '../components/AddQuestionsModal';
 import SignatureModal from '../components/SignatureModal';
 
-const CreateExamModal = ({ isOpen, onClose, onExamCreated }) => {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [duration, setDuration] = useState(30);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState('');
-  const toast = useToast();
-  const finalRef = React.useRef(null);
-  
-  // Réinitialiser le formulaire lorsque le modal est fermé
-  useEffect(() => {
-    if (!isOpen) {
-      // Petit délai pour laisser l'animation de fermeture se terminer
-      const timer = setTimeout(() => {
-        setTitle('');
-        setDescription('');
-        setDuration(30);
-        setError('');
-      }, 300);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [isOpen]);
+// Schéma de validation pour le formulaire de création d'examen
+const ExamSchema = Yup.object().shape({
+  title: Yup.string()
+    .trim()
+    .min(3, 'Le titre doit contenir au moins 3 caractères')
+    .required('Le titre est obligatoire'),
+  description: Yup.string().trim(),
+  duration_minutes: Yup.number()
+    .min(1, 'La durée doit être d\'au moins 1 minute')
+    .required('La durée est obligatoire'),
+});
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!title.trim()) {
-      setError('Veuillez entrer un titre pour l\'examen');
-      return;
-    }
-    
-    try {
-      setIsSubmitting(true);
-      setError('');
-      
-      const newExam = await examService.createExam({
-        title: title.trim(),
-        description: description.trim(),
-        duration_minutes: duration,
-      });
-      
-      toast({
-        title: 'Examen créé avec succès',
-        description: 'Votre nouvel examen a été créé et est maintenant prêt à recevoir des questions.',
-        status: 'success',
-        duration: 5000,
-        isClosable: true,
-      });
-      
-      onExamCreated(newExam);
-      onClose();
-    } catch (err) {
-      console.error('Erreur lors de la création de l\'examen:', err);
-      setError('Une erreur est survenue lors de la création de l\'examen. Veuillez réessayer.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+const CreateExamModal = ({ isOpen, onClose, onExamCreated }) => {
+  const initialRef = React.useRef(null);
 
   return (
     <Modal 
@@ -128,70 +90,79 @@ const CreateExamModal = ({ isOpen, onClose, onExamCreated }) => {
       onClose={onClose} 
       size="lg"
       isCentered
-      finalFocusRef={finalRef}
+      initialFocusRef={initialRef}
       motionPreset="slideInBottom"
-      scrollBehavior="inside"
-      preserveScrollBarGap
     >
       <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
       <ModalContent mx={4}>
-        <form onSubmit={handleSubmit}>
-          <ModalHeader>Créer un nouvel examen</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody pb={6}>
-            {error && (
-              <Alert status="error" mb={4} borderRadius="md">
-                <AlertIcon />
-                {error}
-              </Alert>
-            )}
-            
-            <VStack spacing={4}>
-              <FormControl isRequired>
-                <FormLabel>Titre de l'examen</FormLabel>
-                <Input
-                  placeholder="Ex: Examen de Mathématiques - Juin 2023"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                />
-              </FormControl>
-              
-              <FormControl>
-                <FormLabel>Description (optionnel)</FormLabel>
-                <Textarea
-                  placeholder="Description détaillée de l'examen..."
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={3}
-                />
-              </FormControl>
-              
-              <FormControl>
-                <FormLabel>Durée (en minutes)</FormLabel>
-                <Input
-                  type="number"
-                  min="1"
-                  value={duration}
-                  onChange={(e) => setDuration(parseInt(e.target.value) || 30)}
-                  w="120px"
-                />
-              </FormControl>
-            </VStack>
-          </ModalBody>
-          <ModalFooter>
-            <Button variant="ghost" mr={3} onClick={onClose} isDisabled={isSubmitting}>
-              Annuler
-            </Button>
-            <Button 
-              colorScheme="blue" 
-              type="submit" 
-              isLoading={isSubmitting}
-              loadingText="Création..."
-            >
-              Créer l'examen
-            </Button>
-          </ModalFooter>
-        </form>
+        <Formik
+          initialValues={{
+            title: '',
+            description: '',
+            duration_minutes: 30,
+          }}
+          validationSchema={ExamSchema}
+          onSubmit={onExamCreated} // On délègue la soumission au parent
+          enableReinitialize
+        >
+          {({ isSubmitting, errors, touched }) => (
+            <Form>
+              <ModalHeader>Créer un nouvel examen</ModalHeader>
+              <ModalCloseButton />
+              <ModalBody pb={6}>
+                <VStack spacing={4}>
+                  <Field name="title">
+                    {({ field, form }) => (
+                      <FormControl isInvalid={form.errors.title && form.touched.title} isRequired>
+                        <FormLabel>Titre de l'examen</FormLabel>
+                        <Input {...field} ref={initialRef} placeholder="Ex: Examen de mi-session" />
+                        <FormErrorMessage>{form.errors.title}</FormErrorMessage>
+                      </FormControl>
+                    )}
+                  </Field>
+
+                  <Field name="description">
+                    {({ field, form }) => (
+                      <FormControl isInvalid={form.errors.description && form.touched.description}>
+                        <FormLabel>Description</FormLabel>
+                        <Textarea {...field} placeholder="Brève description de l'examen" />
+                        <FormErrorMessage>{form.errors.description}</FormErrorMessage>
+                      </FormControl>
+                    )}
+                  </Field>
+
+                  <Field name="duration_minutes">
+                    {({ field, form }) => (
+                      <FormControl isInvalid={form.errors.duration_minutes && form.touched.duration_minutes} isRequired>
+                        <FormLabel>Durée (en minutes)</FormLabel>
+                        <NumberInput {...field} min={1} onChange={(val) => form.setFieldValue(field.name, parseInt(val, 10))}>
+                          <NumberInputField />
+                          <NumberInputStepper>
+                            <NumberIncrementStepper />
+                            <NumberDecrementStepper />
+                          </NumberInputStepper>
+                        </NumberInput>
+                        <FormErrorMessage>{form.errors.duration_minutes}</FormErrorMessage>
+                      </FormControl>
+                    )}
+                  </Field>
+                </VStack>
+              </ModalBody>
+
+              <ModalFooter>
+                <Button onClick={onClose} mr={3} variant="ghost">Annuler</Button>
+                <Button 
+                  colorScheme="blue" 
+                  type="submit"
+                  isLoading={isSubmitting}
+                  leftIcon={<AddIcon />}
+                >
+                  Créer l'examen
+                </Button>
+              </ModalFooter>
+            </Form>
+          )}
+        </Formik>
       </ModalContent>
     </Modal>
   );
@@ -514,12 +485,11 @@ const TeacherDashboardPage = () => {
     };
   }, []);
   
-  const handleCreateExam = async (newExam) => {
+    const handleCreateExam = async (newExam, { setSubmitting, resetForm }) => {
     try {
       const createdExam = await examService.createExam(newExam);
-      
       setExams(prevExams => [createdExam, ...prevExams]);
-      
+
       toast({
         title: 'Examen créé',
         description: `L'examen "${createdExam.title}" a été créé avec succès.`,
@@ -527,24 +497,27 @@ const TeacherDashboardPage = () => {
         duration: 5000,
         isClosable: true,
       });
-      
+
+      resetForm();
+      onExamModalClose(); // Fermer la modale de création
+
       // Ouvrir directement le modal pour ajouter des questions
       setSelectedExamId(createdExam.id);
       onQuestionsModalOpen();
-      
-      return createdExam;
+
     } catch (error) {
       console.error('Erreur lors de la création de l\'examen:', error);
+      const errorMessage = error.response?.data?.detail || 'Une erreur est survenue lors de la création de l\'examen.';
       
       toast({
-        title: 'Erreur',
-        description: 'Une erreur est survenue lors de la création de l\'examen.',
+        title: 'Erreur de création',
+        description: errorMessage,
         status: 'error',
-        duration: 5000,
+        duration: 9000,
         isClosable: true,
       });
-      
-      throw error; // Propager l'erreur pour une gestion ultérieure
+    } finally {
+      setSubmitting(false);
     }
   };
   

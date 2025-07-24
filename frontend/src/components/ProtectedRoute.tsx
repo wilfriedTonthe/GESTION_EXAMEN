@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { ROUTES } from '../constants/routes';
 
 interface ProtectedRouteProps {
+  loginPath?: string;
   children: React.ReactNode;
   requireTeacher?: boolean;
   publicRoute?: boolean; // Si true, la route est accessible sans authentification
@@ -11,6 +12,7 @@ interface ProtectedRouteProps {
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ 
   children, 
   requireTeacher = false,
+  loginPath = ROUTES.TEACHER_LOGIN,
   publicRoute = false
 }) => {
   const { user, isAuthenticated, loading } = useAuth();
@@ -29,7 +31,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   // Vérification d'authentification uniquement pour les routes protégées
   if (!isAuthenticated) {
     // Rediriger vers la page de connexion si l'utilisateur n'est pas authentifié
-    return <Navigate to={ROUTES.TEACHER_LOGIN} state={{ from: location }} replace />;
+    return <Navigate to={loginPath} state={{ from: location }} replace />;
   }
 
   if (requireTeacher && !user?.is_teacher) {

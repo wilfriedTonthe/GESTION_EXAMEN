@@ -160,6 +160,34 @@ def get_submission(submission_id: int, db: Session = Depends(get_db)):
     
     return db_submission
 
+@router.get("/exam/{exam_id}/results-pdf", response_class=Response)
+async def download_exam_results_pdf(
+    exam_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Génère et télécharge les résultats de toutes les soumissions pour un examen au format PDF.
+    """
+    exam = db.query(Exam).options(joinedload(Exam.teacher)).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Examen non trouvé.")
+
+    if not current_user.is_teacher or exam.teacher_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Accès non autorisé.")
+
+    submissions = db.query(Submission).options(joinedload(Submission.answers)).filter(Submission.exam_id == exam_id).all()
+    
+    # Même s'il n'y a pas de soumissions, générer un PDF avec un message informatif
+    # au lieu de renvoyer une erreur 404
+    pdf_bytes = generate_results_pdf(exam=exam, submissions=submissions)
+    
+    return Response(
+        content=pdf_bytes,
+        media_type='application/pdf',
+        headers={"Content-Disposition": f"attachment; filename=resultats_examen_{exam.id}.pdf"}
+    )
+
 @router.get("/exam/{exam_id}", response_model=List[SubmissionResponse])
 def get_submissions_by_exam(exam_id: int, db: Session = Depends(get_db)):
     # Vérifier si l'examen existe
@@ -173,34 +201,3 @@ def get_submissions_by_exam(exam_id: int, db: Session = Depends(get_db)):
     ).all()
     
     return submissions
-
-@router.get("/{submission_id}/results/pdf", response_class=Response)
-async def get_exam_results_pdf(
-    submission_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Génère et télécharge les résultats d'un examen au format PDF.
-    """
-    submission = db.query(Submission).options(joinedload(Submission.answers).joinedload(Answer.question).joinedload(Question.options), joinedload(Submission.answers).joinedload(Answer.selected_option)).filter(Submission.id == submission_id).first()
-
-    if not submission:
-        raise HTTPException(status_code=404, detail="Soumission non trouvée.")
-
-    # Vérifier que l'utilisateur est soit l'étudiant qui a soumis, soit l'enseignant propriétaire
-    exam = db.query(Exam).filter(Exam.id == submission.exam_id).first()
-    if not exam or (submission.student_id != current_user.id and exam.teacher_id != current_user.id):
-        raise HTTPException(status_code=403, detail="Accès non autorisé aux résultats.")
-
-    student = db.query(User).filter(User.id == submission.student_id).first()
-
-    # Générer le PDF en utilisant le service
-    pdf_bytes = generate_results_pdf(submission=submission, student=student, exam=exam)
-    
-    # Créer une réponse HTTP avec le contenu du PDF
-    return Response(
-        content=pdf_bytes,
-        media_type='application/pdf',
-        headers={"Content-Disposition": f"attachment; filename=resultats_examen_{submission.exam_id}.pdf"}
-    )

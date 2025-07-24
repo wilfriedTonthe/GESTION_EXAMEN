@@ -81,6 +81,32 @@ class SecurityService {
       throw error;
     }
   }
+
+  // Vérifier si un étudiant est autorisé à passer un examen
+  static async verifyStudentForExam(examId, studentName) {
+    // Vérifier si examId est défini
+    if (!examId) {
+      console.error('Erreur: examId est undefined ou null');
+      return {
+        authorized: false,
+        message: "Impossible de vérifier l'autorisation: identifiant d'examen manquant."
+      };
+    }
+
+    try {
+      console.log(`Vérification de l'étudiant ${studentName} pour l'examen ${examId}`);
+      const response = await axios.get(
+        `${API_URL}/security/verify-student/${examId}/${encodeURIComponent(studentName)}`
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Erreur lors de la vérification de l\'autorisation de l\'étudiant:', error);
+      return {
+        authorized: false,
+        message: `Erreur lors de la vérification: ${error.response?.data?.detail || error.message}`
+      };
+    }
+  }
 }
 
 export default SecurityService;

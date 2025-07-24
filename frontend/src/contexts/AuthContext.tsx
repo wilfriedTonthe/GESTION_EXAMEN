@@ -4,7 +4,7 @@ import { authService, User } from '../services/authService';
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<User>;
+  login: (email: string, password: string, navigate: (path: string, options?: { replace: boolean }) => void, from: string) => Promise<User>;
   logout: () => void;
   register: (data: any) => Promise<void>;
   isAuthenticated: boolean;
@@ -37,7 +37,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await authService.register(data);
   };
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, navigate: (path: string, options?: { replace: boolean }) => void, from: string) => {
     try {
       // Appeler le service de connexion
       await authService.login(email, password);
@@ -47,6 +47,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       // Mettre à jour l'état de l'utilisateur
       setUser(userData);
+
+      // Rediriger après la mise à jour de l'état
+      navigate(from, { replace: true });
       
       // Retourner les données de l'utilisateur pour une utilisation ultérieure
       return userData;

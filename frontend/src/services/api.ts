@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { authService } from './authService';
+
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
@@ -11,14 +11,16 @@ const api = axios.create({
 // Ajouter le token JWT à chaque requête
 api.interceptors.request.use(
   (config) => {
-    const token = authService.getToken();
+    console.log('Interceptor running...');
+    const token = localStorage.getItem('token');
+    console.log('Token found:', token);
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
   (error) => {
-    return Promise.reject(error);
+    return Promise.reject(new Error(error.message ?? 'An error occurred during request setup'));
   }
 );
 
@@ -29,7 +31,10 @@ api.interceptors.response.use(
     try {
       handleApiError(error);
     } catch (err) {
-      return Promise.reject(err);
+      if (err instanceof Error) {
+        return Promise.reject(err);
+      }
+      return Promise.reject(new Error(String(err)));
     }
     return Promise.reject(new Error('Erreur inconnue'));
   }
@@ -53,7 +58,7 @@ export const handleApiError = (error: unknown): never => {
       // Gérer les erreurs d'authentification
       if (error.response.status === 401) {
         // Déconnexion si le token est invalide
-        authService.logout();
+        localStorage.removeItem('token');
         window.location.href = '/login';
         throw new Error('Session expirée. Veuillez vous reconnecter.');
       }

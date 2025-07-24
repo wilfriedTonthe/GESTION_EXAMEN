@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from . import exams, submissions, auth, security
 from ..core.security import get_current_active_user
 from . import auth
+from . import security_routes
 
 router = APIRouter()
 
@@ -18,6 +19,13 @@ router.include_router(
 # Routes de sécurité (accessibles sans authentification pour les étudiants)
 router.include_router(
     security.router,
+    prefix="/security",
+    tags=["Security"]
+)
+
+# Routes de sécurité additionnelles (vérification étudiants, etc.)
+router.include_router(
+    security_routes.router,
     prefix="/security",
     tags=["Security"]
 )

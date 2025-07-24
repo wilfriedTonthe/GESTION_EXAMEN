@@ -1,131 +1,78 @@
-import { Box, Button, FormControl, FormLabel, Input, VStack, Heading, useToast, InputGroup, InputRightElement, IconButton } from '@chakra-ui/react';
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ViewIcon, ViewOffIcon } from '@chakra-ui/icons';
-import { authService } from '../../../services/authService';
+import React, { useState, useRef, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Box, Button, FormControl, FormLabel, Input, VStack, Heading, useToast, Text } from '@chakra-ui/react';
+import examService from '../../../services/examService';
+import { ROUTES } from '../../../constants/routes';
 
-interface LoginFormData {
-  email: string;
-  password: string;
-  examCode: string;
-}
-
-const ExamLoginPage = () => {
-  const [formData, setFormData] = useState<LoginFormData>({
-    email: '',
-    password: '',
-    examCode: ''
-  });
-  const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+const ExamLoginPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
+  const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const isMounted = useRef(true);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  const from = location.state?.from?.pathname ?? ROUTES.EXAM_ACCESS;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
+
     try {
-      // Authentification
-      await authService.login(formData.email, formData.password);
+      await examService.verifyPassword(password);
       
-      // Redirection vers la page de l'examen si le code est fourni
-      if (formData.examCode) {
-        navigate(`/exam/${formData.examCode}`);
-      } else {
-        navigate('/dashboard');
-      }
-      
+      if (!isMounted.current) return;
+
       toast({
-        title: 'Connexion réussie',
+        title: 'Accès autorisé',
+        description: "Vous allez être redirigé vers l'examen.",
         status: 'success',
         duration: 3000,
         isClosable: true,
       });
-    } catch (error) {
-      console.error('Erreur de connexion:', error);
+
+      navigate(from, { replace: true });
+
+    } catch (error: any) { 
+      if (!isMounted.current) return;
+
       toast({
-        title: 'Erreur de connexion',
-        description: 'Email ou mot de passe incorrect',
+        title: 'Erreur',
+        description: error.response?.data?.detail ?? 'Mot de passe invalide ou erreur serveur.',
         status: 'error',
         duration: 5000,
         isClosable: true,
       });
     } finally {
-      setIsLoading(false);
+      if (isMounted.current) {
+        setIsLoading(false);
+      }
     }
   };
 
   return (
-    <Box minH="100vh" display="flex" alignItems="center" justifyContent="center" bg="gray.50">
-      <Box p={8} maxW="md" w="full" bg="white" borderRadius="lg" boxShadow="md">
-        <Heading mb={6} textAlign="center" color="blue.600">Connexion à l'application</Heading>
-        <form onSubmit={handleSubmit}>
-          <VStack spacing={4}>
-            <FormControl id="email" isRequired>
-              <FormLabel>Email</FormLabel>
-              <Input 
-                type="email" 
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                placeholder="votre@email.com"
-              />
-            </FormControl>
-
-            <FormControl id="password" isRequired>
-              <FormLabel>Mot de passe</FormLabel>
-              <InputGroup>
-                <Input 
-                  type={showPassword ? 'text' : 'password'}
-                  name="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  placeholder="Votre mot de passe"
-                />
-                <InputRightElement>
-                  <IconButton
-                    aria-label={showPassword ? 'Cacher le mot de passe' : 'Afficher le mot de passe'}
-                    icon={showPassword ? <ViewOffIcon /> : <ViewIcon />}
-                    onClick={() => setShowPassword(!showPassword)}
-                    variant="ghost"
-                  />
-                </InputRightElement>
-              </InputGroup>
-            </FormControl>
-
-            <FormControl id="examCode">
-              <FormLabel>Code d'accès à l'examen (optionnel)</FormLabel>
-              <Input 
-                type="text" 
-                name="examCode"
-                value={formData.examCode}
-                onChange={handleChange}
-                placeholder="Code fourni par votre enseignant"
-              />
-            </FormControl>
-
-            <Button 
-              type="submit" 
-              colorScheme="blue" 
-              w="full" 
-              mt={4}
-              isLoading={isLoading}
-              loadingText="Connexion en cours..."
-            >
-              Se connecter
-            </Button>
-          </VStack>
-        </form>
-      </Box>
+    <Box p={8} maxWidth="500px" mx="auto">
+      <VStack spacing={4} as="form" onSubmit={handleSubmit}>
+        <Heading>Accéder à l'examen</Heading>
+        <Text>Veuillez entrer le mot de passe de l'examen pour continuer.</Text>
+        <FormControl isRequired>
+          <FormLabel>Mot de passe de l'examen</FormLabel>
+          <Input 
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </FormControl>
+        <Button type="submit" colorScheme="teal" width="full" isLoading={isLoading}>
+          Entrer
+        </Button>
+      </VStack>
     </Box>
   );
 };

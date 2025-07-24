@@ -1,65 +1,49 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Path, Request, Response, UploadFile, File
-from fastapi.responses import RedirectResponse, StreamingResponse
-from sqlalchemy.orm import Session, joinedload
-from typing import List, Dict, Any, Optional
+import os
 import random
+import shutil
 import string
+import tempfile
 import uuid
 from datetime import datetime, timedelta, timezone
-from pydantic import BaseModel
-from io import BytesIO
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.units import inch
-from PIL import Image
-import os
-import shutil
-import tempfile
-from app.security.face_recognition_service import FaceRecognitionService
+from typing import Any, Dict, List, Optional
 
-# Modèles SQLAlchemy
-from app.models import Exam, Question, QuestionOption, Submission, Answer, ExamSession, User
-
-# Schémas Pydantic
-from app.schemas.schemas import (
-    Exam as ExamSchema,
-    ExamCreate,
-    ExamUpdate,
-    ExamResponse,
-    ExamWithQuestionsResponse,
-    ExamSimpleResponse,
-    QuestionCreate,
-    QuestionOptionCreate,
-    Question as QuestionSchema,
-    QuestionOption as QuestionOptionSchema,
-    ExamSession as ExamSessionSchema,
-    ExamSessionCreate,
-    ExamSessionResponse
+from fastapi import (
+    APIRouter, Depends, File, HTTPException, Path, Request, Response, UploadFile, status
 )
+from fastapi.responses import RedirectResponse, StreamingResponse
+from jose import jwt
+from pydantic import BaseModel
+from sqlalchemy.orm import Session, joinedload
 
-# Schéma pour la mise à jour d'un examen
-class ExamUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    is_active: Optional[bool] = None
-    duration_minutes: Optional[int] = None
-
-# Utilitaires et dépendances
-from app.core.security import get_current_teacher_user, get_current_user, get_current_active_user
+# Imports de l'application
+from app.core.config import settings
+from app.core.constants import (
+    EXAM_INACTIVE, EXAM_NOT_FOUND, EXAM_NOT_FOUND_WITH_PASSWORD, INVALID_CREDENTIALS
+)
+from app.core.security import (
+    create_access_token, get_current_active_user, get_current_teacher_user, get_current_user
+)
 from app.db.database import get_db
-from app.core.constants import EXAM_NOT_FOUND, EXAM_NOT_FOUND_WITH_PASSWORD, EXAM_INACTIVE, INVALID_CREDENTIALS
+from app.models.models import Exam, Question, QuestionOption, Submission, Answer, ExamSession, User
+from app.schemas.schemas import (
+    ExamCreate, ExamUpdate, Exam as ExamSchema,
+    QuestionCreate, QuestionOptionCreate, Question as QuestionSchema,
+    ExamSessionCreate, ExamSession as ExamSessionSchema
+)
+from app.security.face_recognition_service import FaceRecognitionService
 from app.security.exam_security import exam_security
 
-# Modèles de réponse
+
+# Modèles Pydantic pour les requêtes et réponses
 class ExamLoginResponse(BaseModel):
     exam_id: int
     title: str
     description: Optional[str] = None
     expires_at: Optional[datetime] = None
-    
+
 class ExamResponse(ExamSchema):
     questions: List[QuestionSchema] = []
-    
+
 class ExamListResponse(BaseModel):
     id: int
     title: str
@@ -88,22 +72,36 @@ class MonitorRequest(BaseModel):
 class MonitorStopRequest(BaseModel):
     session_id: str
 
-from ..core.security import get_current_teacher_user
-
 class ExamAccessRequest(BaseModel):
     password: str
+
+class StudentVerificationRequest(BaseModel):
+    exam_id: int
+    student_name: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+class ExamDetailsResponse(BaseModel):
+    exam_id: int
+    title: str
+    description: Optional[str]
 
 router = APIRouter(tags=["exams"])
 
 # Initialiser le service de reconnaissance faciale
 face_recognition_service = FaceRecognitionService()
 
-@router.post("/verify-password", response_model=ExamLoginResponse)
+@router.post("/verify-password", response_model=ExamDetailsResponse)
 async def verify_exam_password(
     request_data: ExamAccessRequest,
     db: Session = Depends(get_db)
 ):
-    """Vérifie le mot de passe d'un examen et retourne les détails de base si valide."""
+    """
+    Authenticates a student for an exam with a password and returns an access token.
+    The token is stored in an HTTPOnly cookie.
+    """
     exam = db.query(Exam).filter(Exam.password == request_data.password).first()
 
     if not exam:
@@ -118,18 +116,49 @@ async def verify_exam_password(
             detail=EXAM_INACTIVE
         )
 
-    # Calculer la date d'expiration si une durée est définie
-    expires_at = None
-    if exam.duration_minutes:
-        # Utiliser timezone.utc pour être cohérent
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=exam.duration_minutes)
+    return {
+        "exam_id": exam.id,
+        "title": exam.title,
+        "description": exam.description
+    }
 
-    return ExamLoginResponse(
-        exam_id=exam.id,
-        title=exam.title,
-        description=exam.description,
-        expires_at=expires_at
+@router.post("/verify-student", response_model=Token)
+async def verify_student_and_grant_access(
+    response: Response,
+    request_data: StudentVerificationRequest,
+    db: Session = Depends(get_db)
+):
+    # Ici, nous devrions vérifier le nom de l'étudiant contre les signatures faciales.
+    # Pour l'instant, nous allons simplement supposer que la vérification est réussie si un utilisateur avec ce nom existe.
+    user = db.query(User).filter(User.full_name == request_data.student_name).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Étudiant non trouvé avec ce nom."
+        )
+
+    student_user = {
+        "sub": f"student_{user.id}",
+        "role": "student",
+        "exam_id": request_data.exam_id
+    }
+    
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data=student_user, expires_delta=access_token_expires
     )
+
+    response.set_cookie(
+        key="access_token",
+        value=f"Bearer {access_token}",
+        httponly=True,
+        max_age=int(access_token_expires.total_seconds()),
+        expires=datetime.now(timezone.utc) + access_token_expires,
+        samesite="lax",
+        secure=False, # Mettre à True en production
+    )
+    
+    return {"access_token": access_token, "token_type": "bearer"}
 
 # Créer un dossier pour stocker les signatures si ce n'est pas déjà fait
 SIGNATURES_DIR = "uploads/signatures"
@@ -184,6 +213,7 @@ def upload_facial_signatures(
     """
     Téléverse les photos des étudiants pour un examen, génère et sauvegarde
     le fichier de signatures faciales en utilisant le FaceRecognitionService.
+    Traite tous les fichiers fournis et crée une signature pour chaque image valide.
     """
     # Vérifier que l'examen existe et appartient à l'enseignant
     exam = db.query(Exam).filter(Exam.id == exam_id, Exam.teacher_id == current_user.id).first()
@@ -193,23 +223,44 @@ def upload_facial_signatures(
             detail="Examen non trouvé ou vous n'avez pas les droits pour le modifier."
         )
 
+    # Vérifier qu'il y a des fichiers à traiter
+    if not files or len(files) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Aucun fichier n'a été fourni. Veuillez téléverser au moins une image."
+        )
+
     # Créer un répertoire temporaire pour stocker les images
     temp_dir = tempfile.mkdtemp()
+    uploaded_files = []
 
     try:
         # Sauvegarder les fichiers uploadés dans le répertoire temporaire
         for file in files:
+            # Vérifier le type de fichier
+            if not file.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                continue
+                
             file_path = os.path.join(temp_dir, file.filename)
             with open(file_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
+                uploaded_files.append(file.filename)
 
+        if not uploaded_files:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Aucun fichier image valide n'a été fourni. Formats acceptés: .jpg, .jpeg, .png"
+            )
+
+        print(f"Traitement de {len(uploaded_files)} fichiers pour l'examen {exam_id}")
+        
         # Appeler le service pour extraire les signatures
         success = face_service.extract_signatures(exam_id=exam.id, images_folder=temp_dir)
 
         if not success:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="L'extraction des signatures faciales a échoué. Vérifiez les logs et les images fournies."
+                detail="L'extraction des signatures faciales a échoué. Vérifiez que les images contiennent des visages clairement visibles."
             )
 
         # Mettre à jour le chemin du fichier de signatures dans la base de données
@@ -219,7 +270,10 @@ def upload_facial_signatures(
 
         return {
             "message": f"Les signatures faciales pour l'examen '{exam.title}' ont été créées avec succès.",
-            "signature_file": signature_path
+            "signature_file": signature_path,
+            "processed_files": len(uploaded_files),
+            "exam_id": exam_id,
+            "exam_title": exam.title
         }
 
     finally:
@@ -233,6 +287,18 @@ async def create_exam(
     db: Session = Depends(get_db)
 ):
     """Crée un nouvel examen"""
+    # Vérifier si un examen avec le même titre existe déjà pour cet enseignant
+    existing_exam = db.query(Exam).filter(
+        Exam.title == exam_data.title,
+        Exam.teacher_id == current_user.id
+    ).first()
+    
+    if existing_exam:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Un examen avec ce titre existe déjà."
+        )
+
     # Générer un mot de passe aléatoire pour l'examen
     password = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
     
@@ -291,48 +357,6 @@ def generate_exam_password():
     chars = string.ascii_letters + string.digits
     return ''.join(random.choice(chars) for _ in range(length))
 
-@router.post("/verify-password")
-async def verify_exam_password(
-    request: Request,
-    db: Session = Depends(get_db)
-):
-    """
-    Vérifie le mot de passe de l'examen et redirige vers la page d'examen
-    """
-    form_data = await request.form()
-    password = form_data.get("password")
-    student_name = form_data.get("student_name")
-    
-    if not password or not student_name:
-        return RedirectResponse(
-            url="/exam/access?error=missing_fields",
-            status_code=status.HTTP_303_SEE_OTHER
-        )
-    
-    # Vérifier si l'examen existe avec ce mot de passe
-    exam = db.query(Exam).filter(Exam.password == password).first()
-    
-    if not exam:
-        return RedirectResponse(
-            url="/exam/access?error=invalid_password",
-            status_code=status.HTTP_303_SEE_OTHER
-        )
-    
-    # Vérifier si l'examen est actif
-    if not exam.is_active:
-        return RedirectResponse(
-            url="/exam/access?error=exam_inactive",
-            status_code=status.HTTP_303_SEE_OTHER
-        )
-    
-    # Rediriger vers la page d'examen avec les paramètres nécessaires
-    # Utiliser l'URL du frontend avec le protocole HTTP
-    frontend_url = f"http://localhost:5173/exam/{password}?studentName={student_name}"
-    return RedirectResponse(
-        url=frontend_url,
-        status_code=status.HTTP_303_SEE_OTHER
-    )
-
 @router.get("/by-password/{password}", 
            response_model=ExamSchema, 
            dependencies=[],
@@ -342,78 +366,19 @@ async def verify_exam_password(
                400: {"description": "Examen inactif ou expiré"}
            })
 async def read_exam_by_password(password: str, db: Session = Depends(get_db)):
-    # Récupérer l'examen avec son mot de passe
+    """Récupère un examen par son mot de passe."""
     exam = db.query(Exam).filter(Exam.password == password).first()
-    
-    # Vérifier si l'examen existe
-    if exam is None:
-        raise HTTPException(status_code=404, detail=EXAM_NOT_FOUND_WITH_PASSWORD)
-        
-    # Vérifier si l'examen est actif
-    if not exam.is_active:
-        raise HTTPException(status_code=400, detail=EXAM_INACTIVE)
-        
-    # Vérifier si l'examen a expiré (uniquement si expires_at est défini)
-    if hasattr(exam, 'expires_at') and exam.expires_at is not None:
-        from datetime import datetime, timezone
-        if exam.expires_at < datetime.now(timezone.utc):
-            raise HTTPException(status_code=400, detail="Cet examen a expiré")
-        
-    return exam
-
-@router.post("/login", response_model=ExamLoginResponse)
-def login_to_exam(
-    exam_data: Dict[str, str], 
-    db: Session = Depends(get_db)
-):
-    """
-    Authentifie un étudiant pour un examen avec un mot de passe.
-    
-    Args:
-        exam_data: Dictionnaire contenant le mot de passe de l'examen
-        
-    Returns:
-        ExamLoginResponse: Détails de l'examen si l'authentification réussit
-        
-    Raises:
-        HTTPException: Si l'authentification échoue ou si l'examen n'existe pas
-    """
-    password = exam_data.get("password")
-    if not password:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Le mot de passe est requis"
-        )
-    
-    # Récupérer l'examen avec le mot de passe fourni
-    exam = db.query(Exam).filter(
-        Exam.password == password
-    ).first()
-    
-    # Vérifier si l'examen existe
     if not exam:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=EXAM_NOT_FOUND_WITH_PASSWORD
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Examen non trouvé avec ce mot de passe"
         )
-    
-    # Vérifier si l'examen est actif
     if not exam.is_active:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=EXAM_INACTIVE
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Examen inactif"
         )
-    
-    # Calculer la date d'expiration (par exemple, 2 heures à partir de maintenant)
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=2)
-    
-    # Retourner les détails de l'examen
-    return {
-        "exam_id": exam.id,
-        "title": exam.title,
-        "description": exam.description,
-        "expires_at": expires_at
-    }
+    return exam
 
 @router.post("/{exam_id}/questions/", response_model=QuestionSchema)
 def create_question(
@@ -686,7 +651,7 @@ def generate_signatures_sheet(exam_id: int, db: Session = Depends(get_db), curre
                 img_width, img_height = img.size
                 aspect = img_height / float(img_width)
                 p.drawImage(sub.student_photo_path, inch * 3, y_position - 0.5 * inch, width=1.5*inch, height=(1.5*aspect)*inch, preserveAspectRatio=True, mask='auto')
-            except Exception as e:
+            except Exception:
                 p.drawString(inch * 3, y_position, "(Image invalide)")
 
         # Signature line

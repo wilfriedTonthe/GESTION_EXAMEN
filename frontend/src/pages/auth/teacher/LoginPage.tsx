@@ -33,7 +33,8 @@ const TeacherLoginPage = () => {
     setIsLoading(true);
     
     try {
-      await login(formData.email, formData.password);
+      const from = location.state?.from?.pathname ?? ROUTES.DASHBOARD;
+    await login(formData.email, formData.password, navigate, from);
       
       if (!isMounted.current) return;
       
@@ -45,13 +46,6 @@ const TeacherLoginPage = () => {
         duration: 1000, // Réduire la durée pour une redirection plus rapide
         isClosable: true,
       });
-      
-      // Attendre un court instant pour que le toast s'affiche
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Rediriger vers la page précédente ou le tableau de bord
-      const from = location.state?.from?.pathname ?? ROUTES.DASHBOARD;
-      navigate(from, { replace: true });
       
     } catch (error) {
       if (!isMounted.current) return;
