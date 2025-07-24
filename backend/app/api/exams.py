@@ -21,7 +21,7 @@ from app.core.constants import (
     EXAM_INACTIVE, EXAM_NOT_FOUND, EXAM_NOT_FOUND_WITH_PASSWORD, INVALID_CREDENTIALS
 )
 from app.core.security import (
-    create_access_token, get_current_active_user, get_current_teacher_user, get_current_user
+    create_access_token, get_password_hash, get_current_active_user, get_current_teacher_user, get_current_user
 )
 from app.db.database import get_db
 from app.models.models import Exam, Question, QuestionOption, Submission, Answer, ExamSession, User
@@ -78,10 +78,15 @@ class ExamAccessRequest(BaseModel):
 class StudentVerificationRequest(BaseModel):
     exam_id: int
     student_name: str
+    
+class CombinedVerificationRequest(BaseModel):
+    password: str
+    student_name: str
 
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    exam_id: Optional[int] = None  # Ajout de l'ID de l'examen comme champ optionnel
 
 class ExamDetailsResponse(BaseModel):
     exam_id: int
@@ -158,7 +163,81 @@ async def verify_student_and_grant_access(
         secure=False, # Mettre à True en production
     )
     
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": access_token, "token_type": "bearer", "exam_id": exam.id}
+
+@router.post("/verify-access", response_model=Token)
+async def verify_password_and_student(
+    response: Response,
+    request_data: CombinedVerificationRequest,
+    db: Session = Depends(get_db),
+    face_service: FaceRecognitionService = Depends(lambda: face_recognition_service)
+):
+    """Vérifie simultanément le mot de passe de l'examen et le nom de l'étudiant.
+    Si les deux sont valides, génère un token d'accès pour l'examen."""
+    
+    # 1. Vérifier le mot de passe de l'examen
+    exam = db.query(Exam).filter(Exam.password == request_data.password).first()
+    if not exam:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=EXAM_NOT_FOUND_WITH_PASSWORD
+        )
+
+    if not exam.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=EXAM_INACTIVE
+        )
+        
+    # 2. Vérifier le nom de l'étudiant dans le fichier de signatures
+    student_authorized = face_service.verify_student(exam_id=exam.id, student_name=request_data.student_name)
+    if not student_authorized:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Étudiant non autorisé à passer cet examen. Nom non trouvé dans la liste des signatures."
+        )
+    
+    # Pour la vérification d'accès à l'examen, nous n'avons pas besoin de créer un utilisateur
+    # Nous utilisons directement les informations de l'étudiant pour générer le token
+    # Cela évite les problèmes liés à la création d'utilisateurs temporaires
+    
+    # Générer un ID unique pour cet étudiant basé sur son nom et l'ID de l'examen
+    # Cela servira d'identifiant pour le token sans avoir besoin de créer un utilisateur en base
+    student_id = f"temp_{hash(request_data.student_name + str(exam.id))}"
+    
+    # Nous n'avons pas besoin de récupérer ou créer un utilisateur pour cette simple vérification
+    # Le nom de l'étudiant a déjà été vérifié dans le fichier de signatures
+    
+    # 4. Générer un token d'accès
+    student_user = {
+        "sub": student_id,
+        "role": "student",
+        "exam_id": exam.id,
+        "student_name": request_data.student_name
+    }
+    
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data=student_user, expires_delta=access_token_expires
+    )
+
+    # 5. Stocker le token dans un cookie
+    response.set_cookie(
+        key="access_token",
+        value=f"Bearer {access_token}",
+        httponly=True,
+        max_age=int(access_token_expires.total_seconds()),
+        expires=datetime.now(timezone.utc) + access_token_expires,
+        samesite="lax",
+        secure=False, # Mettre à True en production
+    )
+    
+    # 6. Retourner les informations nécessaires
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "exam_id": exam.id
+    }
 
 # Créer un dossier pour stocker les signatures si ce n'est pas déjà fait
 SIGNATURES_DIR = "uploads/signatures"

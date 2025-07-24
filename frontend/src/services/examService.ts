@@ -1,8 +1,6 @@
 import { AxiosResponse } from 'axios';
 import api from './api';
 
-
-
 // Service pour la gestion des examens
 const examService = {
   verifyPassword: async (password: string): Promise<any> => {
@@ -81,6 +79,62 @@ const examService = {
     });
     return response.data;
   },
+  
+  // Nouvelle méthode qui combine la vérification du mot de passe et du nom de l'étudiant
+  verifyPasswordAndStudent: async (password: string, studentName: string): Promise<any> => {
+    try {
+      // Appel API unique pour vérifier à la fois le mot de passe et le nom de l'étudiant
+      const response = await api.post('/exams/verify-access', { 
+        password, 
+        student_name: studentName 
+      });
+      
+      console.log('Verify password and student response:', response.data);
+      
+      // Vérifier que la réponse contient les informations nécessaires
+      if (!response.data?.exam_id || !response.data?.access_token) {
+        console.error('Réponse invalide: informations manquantes dans la réponse', response.data);
+        throw new Error("Impossible de vérifier l'accès à l'examen.");
+      }
+      
+      return response.data;
+    } catch (error) {
+      console.error('Erreur lors de la vérification de l\'accès:', error);
+      throw error;
+    }
+  },
+
+  // Méthode pour récupérer un examen par mot de passe et nom d'étudiant
+  getExamByPasswordAndStudent: async (password: string, studentName: string): Promise<any> => {
+    try {
+      console.log('getExamByPasswordAndStudent appelé avec:', { password, studentName });
+      
+      // Vérifier simultanément le mot de passe et le nom de l'étudiant
+      const verifyResponse = await api.post('/exams/verify-access', { 
+        password, 
+        student_name: studentName 
+      });
+      
+      // Accéder aux données de la réponse
+      const verifyData = verifyResponse.data;
+      console.log('Accès vérifié, données reçues (brut):', verifyResponse);
+      console.log('Accès vérifié, données reçues (data):', verifyData);
+      console.log('Accès vérifié, exam_id présent?', verifyData.exam_id);
+      
+      // Au lieu de faire une seconde requête qui pourrait échouer,
+      // nous utilisons directement les données de la vérification
+      // et nous créons un objet avec les informations minimales nécessaires
+      return {
+        id: verifyData.exam_id,  // Utiliser exam_id comme id pour compatibilité
+        exam_id: verifyData.exam_id,  // Garder aussi exam_id
+        access_token: verifyData.access_token,
+        token_type: verifyData.token_type
+      };
+    } catch (error) {
+      console.error('Erreur lors de la récupération de l\'examen:', error);
+      throw error;
+    }
+  },
 };
 
 // Service pour la soumission des examens
@@ -100,6 +154,67 @@ export const submissionService = {
     });
     return response;
   },
+  
+  // Nouvelle méthode qui combine la vérification du mot de passe et du nom de l'étudiant
+  verifyPasswordAndStudent: async (password: string, studentName: string): Promise<any> => {
+    try {
+      // Appel API unique pour vérifier à la fois le mot de passe et le nom de l'étudiant
+      const response = await api.post('/exams/verify-access', { 
+        password, 
+        student_name: studentName 
+      });
+      
+      console.log('Verify password and student response:', response.data);
+      
+      // Vérifier que la réponse contient les informations nécessaires
+      if (!response.data?.exam_id || !response.data?.access_token) {
+        console.error('Réponse invalide: informations manquantes dans la réponse', response.data);
+        throw new Error("Impossible de vérifier l'accès à l'examen.");
+      }
+      
+      return response.data;
+    } catch (error) {
+      console.error('Erreur lors de la vérification de l\'accès:', error);
+      throw error;
+    }
+  },
+
+  // Méthode pour récupérer un examen par mot de passe et nom d'étudiant
+  getExamByPasswordAndStudent: async (password: string, studentName: string): Promise<any> => {
+    try {
+      console.log('getExamByPasswordAndStudent appelé avec:', { password, studentName });
+      
+      // Vérifier simultanément le mot de passe et le nom de l'étudiant
+      const verifyResponse = await api.post('/exams/verify-access', { 
+        password, 
+        student_name: studentName 
+      });
+      
+      // Accéder aux données de la réponse
+      const verifyData = verifyResponse.data;
+      console.log('Accès vérifié, ID de l\'examen:', verifyData.exam_id);
+      
+      // Récupérer les détails de l'examen avec l'ID
+      const examResponse = await api.get(`/exams/${verifyData.exam_id}`, {
+        headers: {
+          'Authorization': `Bearer ${verifyData.access_token}`
+        }
+      });
+      
+      console.log('Détails de l\'examen récupérés:', examResponse.data);
+      
+      // Ajouter le token d'accès aux données de l'examen pour l'utiliser plus tard
+      return {
+        ...examResponse.data,
+        access_token: verifyData.access_token
+      };
+    } catch (error) {
+      console.error('Erreur lors de la récupération de l\'examen:', error);
+      throw error;
+    }
+  }
 };
+
+// Le service de soumission est déjà défini plus haut, pas besoin de le redéfinir ici
 
 export default examService;

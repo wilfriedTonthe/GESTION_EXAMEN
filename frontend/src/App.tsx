@@ -10,10 +10,11 @@ import Footer from './components/Footer';
 import HomePage from './pages/HomePage';
 import ExamPage from './pages/ExamPage';
 import ExamResultsPage from './pages/ExamResultsPage';
-import ExamAccessPage from './pages/ExamAccessPage';
+// import ExamAccessPage from './pages/ExamAccessPage';
+import ExamUnifiedAccessPage from './pages/auth/exam/ExamUnifiedAccessPage';
 import TeacherDashboardPage from './pages/TeacherDashboardPage';
 import TeacherLoginPage from './pages/auth/teacher/LoginPage';
-import ExamLoginPage from './pages/auth/exam/LoginPage';
+//import ExamLoginPage from './pages/auth/exam/LoginPage';
 import TeacherRegisterPage from './pages/auth/teacher/RegisterPage';
 
 import { AuthProvider } from './contexts/AuthContext';
@@ -97,10 +98,9 @@ function App() {
                   <Route path={ROUTES.HOME} element={<PageWithLayout component={HomePage} />} />
                   
                   <Route path={ROUTES.EXAM_ACCESS} element={
-                    <ProtectedRoute loginPath={ROUTES.EXAM_LOGIN}>
-                      <PageWithLayout component={ExamAccessPage} />
-                    </ProtectedRoute>
-                  } />
+                          <PageWithLayout component={ExamUnifiedAccessPage} />
+                        } />
+
                   
                   {/* Routes d'authentification */}
                   <Route path={ROUTES.TEACHER_LOGIN} element={
@@ -108,7 +108,7 @@ function App() {
                   } />
                   
                   <Route path={ROUTES.TEACHER_REGISTER} element={<PageWithLayout component={TeacherRegisterPage} />} />
-                  <Route path={ROUTES.EXAM_LOGIN} element={<PageWithLayout component={ExamLoginPage} />} />
+                  
                   
                   {/* Route de l'examen - accessible sans authentification */}
                   <Route 

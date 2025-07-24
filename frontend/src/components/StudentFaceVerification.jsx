@@ -420,7 +420,7 @@ const StudentFaceVerification = ({ examId, studentName, sessionId, onVerificatio
 };
 
 StudentFaceVerification.propTypes = {
-  examId: PropTypes.string.isRequired,
+  examId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
   studentName: PropTypes.string.isRequired,
   sessionId: PropTypes.string.isRequired,
   onVerificationComplete: PropTypes.func.isRequired

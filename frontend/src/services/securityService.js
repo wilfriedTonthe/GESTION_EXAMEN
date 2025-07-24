@@ -8,8 +8,8 @@ class SecurityService {
   static async startExamSecurity(examId) {
     try {
       const response = await axios.post(
-        `${API_URL}/start_exam/${examId}`,
-        {},
+        `${API_URL}/security/exam/start`,
+        { session_id: examId.toString() },
         {
           headers: {
             'Content-Type': 'application/json',
